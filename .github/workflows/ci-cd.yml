@@ -55,32 +55,44 @@ jobs:
       run: |
         echo "${JFROG_API_KEY}" | docker login $JFROG_DOCKER_URL --username $JFROG_USER --password-stdin
 
-    - name: Build Docker Image from JFrog-hosted base
+    - name: Build Docker Image
       run: docker build -t petclinic:latest .
 
-    - name: Tag and Push Docker Image to JFrog
-      env:
-        JFROG_DOCKER_URL: ${{ secrets.JFROG_DOCKER_URL }}
+    - name: Install JFrog CLI v2
       run: |
-        docker tag petclinic:latest $JFROG_DOCKER_URL/petclinic:latest
-        docker push $JFROG_DOCKER_URL/petclinic:latest
+        curl -fL https://install-cli.jfrog.io | sh
+        ./jfrog --version
 
-    - name: Xray Scan Export (via JFrog CLI)
+    - name: Configure JFrog CLI
       env:
-        JFROG_URL: ${{ secrets.JFROG_URL }}              # Must be https://.../artifactory
+        JFROG_URL: ${{ secrets.JFROG_URL }}
         JFROG_USER: ${{ secrets.JFROG_USER }}
         JFROG_API_KEY: ${{ secrets.JFROG_API_KEY }}
       run: |
-        curl -fL https://getcli.jfrog.io | sh
-        ./jfrog config add default \
+        ./jfrog config add my-jfrog-server \
           --artifactory-url=$JFROG_URL \
           --user=$JFROG_USER \
           --password=$JFROG_API_KEY \
           --interactive=false
 
-        ./jfrog xr scan "docker-virtual/petclinic:latest" --format=json > xray-report.json
+    - name: Push Docker Image with Build Info
+      env:
+        JFROG_DOCKER_URL: ${{ secrets.JFROG_DOCKER_URL }}
+      run: |
+        ./jfrog rt docker-push petclinic:latest docker-virtual \
+          --build-name=petclinic \
+          --build-number=1
 
-    - name: Upload Xray Report
+    - name: Publish Build Info to Artifactory
+      run: |
+        ./jfrog rt build-collect-env petclinic 1
+        ./jfrog rt build-publish petclinic 1
+
+    - name: Trigger Xray Scan on Build
+      run: |
+        ./jfrog xr build-scan petclinic 1 --format=json > xray-report.json
+
+    - name: Upload Xray Scan Report
       uses: actions/upload-artifact@v4
       with:
         name: xray-report
