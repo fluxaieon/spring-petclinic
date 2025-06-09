@@ -35,8 +35,8 @@ jobs:
     - name: Install JFrog CLI v2
       run: |
         curl -fL https://install-cli.jfrog.io | sh
-        sudo mv jf /usr/local/bin/jfrog
-        jfrog --version
+        sudo mv jf /usr/local/bin/jf
+        jf --version
 
     - name: Configure JFrog CLI
       env:
@@ -44,16 +44,16 @@ jobs:
         JFROG_USER: ${{ secrets.JFROG_USER }}
         JFROG_API_KEY: ${{ secrets.JFROG_API_KEY }}
       run: |
-        jfrog config add jfrog-server \
-          --artifactory-url=$JFROG_URL \
+        jf config add jfrog-server \
+          --url=$JFROG_URL \
           --user=$JFROG_USER \
           --password=$JFROG_API_KEY \
           --interactive=false
 
-    - name: Build Docker Image from JFrog-hosted base
+    - name: Docker Build
       run: docker build -t petclinic:latest .
 
-    - name: Tag and Push Docker Image to JFrog
+    - name: Docker Tag & Push to JFrog
       env:
         JFROG_DOCKER_URL: ${{ secrets.JFROG_DOCKER_URL }}
       run: |
@@ -64,13 +64,13 @@ jobs:
       env:
         JFROG_DOCKER_URL: ${{ secrets.JFROG_DOCKER_URL }}
       run: |
-        jfrog docker push $JFROG_DOCKER_URL/petclinic:latest docker-virtual \
+        jf docker push $JFROG_DOCKER_URL/petclinic:latest \
           --build-name=petclinic-ci \
           --build-number=${{ github.run_number }}
 
     - name: Publish Build Info
-      run: jfrog rt build-publish petclinic-ci ${{ github.run_number }}
+      run: jf rt build-publish petclinic-ci ${{ github.run_number }}
 
     - name: Xray Scan Build
-      run: jfrog xr build-scan petclinic-ci ${{ github.run_number }}
+      run: jf xr build-scan petclinic-ci ${{ github.run_number }}
 
