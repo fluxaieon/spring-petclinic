@@ -32,9 +32,9 @@ jobs:
     - name: Build with Maven (via JFrog)
       run: ./mvnw clean package -DskipTests
 
-    - name: Install JFrog CLI v2 (manual download)
+    - name: Install JFrog CLI v2
       run: |
-        curl -fL -o jf https://releases.jfrog.io/artifactory/jfrog-cli/v2-jf/latest/jfrog-cli-linux-amd64/jf
+        curl -fL -o jf https://releases.jfrog.io/artifactory/jfrog-cli/v2/latest/jfrog-cli-linux-amd64/jf
         chmod +x jf
         sudo mv jf /usr/local/bin/jf
         jf --version
@@ -46,12 +46,12 @@ jobs:
         JFROG_API_KEY: ${{ secrets.JFROG_API_KEY }}
       run: |
         jf config add jfrog-server \
-          --url=$JFROG_URL \
+          --artifactory-url=$JFROG_URL \
           --user=$JFROG_USER \
           --password=$JFROG_API_KEY \
           --interactive=false
 
-    - name: Build Docker Image from JFrog-hosted base
+    - name: Build Docker Image
       run: docker build -t petclinic:latest .
 
     - name: Tag and Push Docker Image to JFrog
