@@ -5,6 +5,7 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   build-test-deploy:
@@ -20,48 +21,13 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Create Maven settings.xml with JFrog Mirror
-      run: |
-        mkdir -p ~/.m2
-        cat <<EOF > ~/.m2/settings.xml
-        <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
-                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-                  xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
-          <mirrors>
-            <mirror>
-              <id>jfrog</id>
-              <mirrorOf>central</mirrorOf>
-              <url>https://triald3g81v.jfrog.io/artifactory/maven-virtual/</url>
-            </mirror>
-          </mirrors>
-          <servers>
-            <server>
-              <id>jfrog</id>
-              <username>${{ secrets.JFROG_USER }}</username>
-              <password>${{ secrets.JFROG_API_KEY }}</password>
-            </server>
-          </servers>
-        </settings>
-        EOF
-
-    - name: Build with Maven
+    - name: Build with Maven (via JFrog)
       run: ./mvnw clean package -DskipTests
-
-    - name: Login to JFrog Docker Registry
-      env:
-        JFROG_USER: ${{ secrets.JFROG_USER }}
-        JFROG_API_KEY: ${{ secrets.JFROG_API_KEY }}
-        JFROG_DOCKER_URL: ${{ secrets.JFROG_DOCKER_URL }}
-      run: |
-        echo "${JFROG_API_KEY}" | docker login $JFROG_DOCKER_URL --username $JFROG_USER --password-stdin
-
-    - name: Build Docker Image
-      run: docker build -t petclinic:latest .
 
     - name: Install JFrog CLI v2
       run: |
         curl -fL https://install-cli.jfrog.io | sh
-        jf --version
+        sudo mv jf /usr/local/bin/
 
     - name: Configure JFrog CLI
       env:
@@ -69,30 +35,38 @@ jobs:
         JFROG_USER: ${{ secrets.JFROG_USER }}
         JFROG_API_KEY: ${{ secrets.JFROG_API_KEY }}
       run: |
-        jf config add my-jfrog-server \
-          --artifactory-url=$JFROG_URL \
-          --user=$JFROG_USER \
-          --password=$JFROG_API_KEY \
-          --interactive=false
+        jf config add --artifactory-url="$JFROG_URL" --user="$JFROG_USER" --apikey="$JFROG_API_KEY" --interactive=false
 
-    - name: Push Docker Image with Build Info
+    - name: Build Docker Image from JFrog-hosted base
+      run: docker build -t petclinic:latest .
+
+    - name: Tag and Push Docker Image to JFrog
+      env:
+        JFROG_DOCKER_URL: ${{ secrets.JFROG_DOCKER_URL }}
       run: |
-        jf docker push petclinic:latest docker-virtual \
-          --build-name=petclinic \
-          --build-number=1
+        docker tag petclinic:latest $JFROG_DOCKER_URL/petclinic:latest
+        docker push $JFROG_DOCKER_URL/petclinic:latest
+
+    - name: Push Docker Image to JFrog with Build Info
+      env:
+        JFROG_DOCKER_URL: ${{ secrets.JFROG_DOCKER_URL }}
+      run: |
+        jf docker push $JFROG_DOCKER_URL/petclinic:latest $JFROG_DOCKER_URL \
+          --build-name=petclinic-ci \
+          --build-number=${{ github.run_number }}
 
     - name: Publish Build Info to Artifactory
       run: |
-        jf rt build-collect-env petclinic 1
-        jf rt build-publish petclinic 1
+        jf rt build-publish petclinic-ci ${{ github.run_number }}
 
-    - name: Trigger Xray Scan on Build
+    - name: Xray Scan Build
       run: |
-        jf xr scan --build=petclinic/1 --format=json > xray-report.json
+        jf xr build-scan petclinic-ci ${{ github.run_number }}
 
     - name: Upload Xray Scan Report
+      if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: xray-report
-        path: xray-report.json
+        name: xray-scan-result
+        path: ${{ github.workspace }}/xray
 
