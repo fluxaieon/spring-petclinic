@@ -67,7 +67,7 @@ jobs:
 
     - name: Xray Scan Export (via JFrog CLI)
       env:
-        JFROG_URL: ${{ secrets.JFROG_URL }}
+        JFROG_URL: ${{ secrets.JFROG_URL }}              # Must be https://.../artifactory
         JFROG_USER: ${{ secrets.JFROG_USER }}
         JFROG_API_KEY: ${{ secrets.JFROG_API_KEY }}
       run: |
