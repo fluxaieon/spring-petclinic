@@ -32,9 +32,10 @@ jobs:
     - name: Build with Maven (via JFrog)
       run: ./mvnw clean package -DskipTests
 
-    - name: Install JFrog CLI v2
+    - name: Install JFrog CLI v2 (as jf)
       run: |
         curl -fL https://install-cli.jfrog.io | sh
+        chmod +x jf
         sudo mv jf /usr/local/bin/jf
         jf --version
 
@@ -45,15 +46,15 @@ jobs:
         JFROG_API_KEY: ${{ secrets.JFROG_API_KEY }}
       run: |
         jf config add jfrog-server \
-          --url=$JFROG_URL \
+          --artifactory-url=$JFROG_URL \
           --user=$JFROG_USER \
           --password=$JFROG_API_KEY \
           --interactive=false
 
-    - name: Docker Build
+    - name: Build Docker Image
       run: docker build -t petclinic:latest .
 
-    - name: Docker Tag & Push to JFrog
+    - name: Tag and Push Docker Image to JFrog
       env:
         JFROG_DOCKER_URL: ${{ secrets.JFROG_DOCKER_URL }}
       run: |
