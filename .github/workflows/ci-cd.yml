@@ -21,14 +21,36 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Cache Maven packages
+    - name: Set up Maven settings to use JFrog
+      run: |
+        mkdir -p ~/.m2
+        cat <<EOF > ~/.m2/settings.xml
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
+  <mirrors>
+    <mirror>
+      <id>jfrog-mirror</id>
+      <mirrorOf>*</mirrorOf>
+      <url>${{ secrets.JFROG_MAVEN_REPO }}</url>
+    </mirror>
+  </mirrors>
+  <servers>
+    <server>
+      <id>jfrog-mirror</id>
+      <username>${env.JFROG_USER}</username>
+      <password>${env.JFROG_API_KEY}</password>
+    </server>
+  </servers>
+</settings>
+EOF
+
+    - name: Enable Maven cache
       uses: actions/cache@v3
       with:
-        path: |
-          ~/.m2/repository
-        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
-        restore-keys: |
-          ${{ runner.os }}-m2
+        path: ~/.m2/repository
+        key: maven-${{ hashFiles('**/pom.xml') }}
+        restore-keys: maven-
 
     - name: Build with Maven (via JFrog)
       run: ./mvnw clean package -DskipTests
@@ -36,7 +58,8 @@ jobs:
     - name: Install JFrog CLI v2
       run: |
         curl -fL https://install-cli.jfrog.io | sh
-        sudo mv jfrog /usr/local/bin/
+        sudo mv jf /usr/local/bin/jf
+        jf --version
 
     - name: Configure JFrog CLI
       env:
@@ -44,11 +67,12 @@ jobs:
         JFROG_USER: ${{ secrets.JFROG_USER }}
         JFROG_API_KEY: ${{ secrets.JFROG_API_KEY }}
       run: |
-        jfrog config add my-server \
-          --url="$JFROG_URL" \
+        jf config add devsecops-server \
+          --artifactory-url="$JFROG_URL" \
           --user="$JFROG_USER" \
           --password="$JFROG_API_KEY" \
-          --interactive=false
+          --interactive=false \
+          --overwrite=true
 
     - name: Build Docker Image
       run: docker build -t petclinic:latest .
@@ -60,26 +84,17 @@ jobs:
         docker tag petclinic:latest $JFROG_DOCKER_URL/petclinic:latest
         docker push $JFROG_DOCKER_URL/petclinic:latest
 
-    - name: Push Docker Image with Build Info
+    - name: Push Docker Image to JFrog with Build Info
       env:
         JFROG_DOCKER_URL: ${{ secrets.JFROG_DOCKER_URL }}
       run: |
-        jfrog docker push $JFROG_DOCKER_URL/petclinic:latest my-server \
+        jf docker push $JFROG_DOCKER_URL/petclinic:latest \
           --build-name=petclinic-ci \
           --build-number=${{ github.run_number }}
 
-    - name: Publish Build Info to Artifactory
-      run: |
-        jfrog rt build-publish petclinic-ci ${{ github.run_number }}
+    - name: Publish Build Info
+      run: jf rt build-publish petclinic-ci ${{ github.run_number }}
 
-    - name: Xray Scan Build
-      run: |
-        jfrog xr build-scan petclinic-ci ${{ github.run_number }}
-
-    - name: Upload Xray Report (optional)
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: xray-report
-        path: ${{ github.workspace }}/xray
+    - name: Xray Scan
+      run: jf xr build-scan petclinic-ci ${{ github.run_number }}
 
