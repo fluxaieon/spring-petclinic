@@ -67,13 +67,18 @@ jobs:
 
     - name: Xray Scan Export (via JFrog CLI)
       env:
-        JFROG_CLI_JFROG_URL: ${{ secrets.JFROG_URL }}
-        JFROG_CLI_USER: ${{ secrets.JFROG_USER }}
-        JFROG_CLI_PASSWORD: ${{ secrets.JFROG_API_KEY }}
+        JFROG_URL: ${{ secrets.JFROG_URL }}
+        JFROG_USER: ${{ secrets.JFROG_USER }}
+        JFROG_API_KEY: ${{ secrets.JFROG_API_KEY }}
       run: |
         curl -fL https://getcli.jfrog.io | sh
-        ./jfrog rt c --url=$JFROG_CLI_JFROG_URL --user=$JFROG_CLI_USER --password=$JFROG_CLI_PASSWORD default
-        ./jfrog xr s "docker-virtual/petclinic:latest" --format json > xray-report.json
+        ./jfrog config add default \
+          --artifactory-url=$JFROG_URL \
+          --user=$JFROG_USER \
+          --password=$JFROG_API_KEY \
+          --interactive=false
+
+        ./jfrog xr scan "docker-virtual/petclinic:latest" --format=json > xray-report.json
 
     - name: Upload Xray Report
       uses: actions/upload-artifact@v4
