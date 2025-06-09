@@ -1,0 +1,59 @@
+name: CI-CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-test-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v3
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Build with Maven
+      run: ./mvnw clean package -DskipTests
+
+    - name: Login to JFrog Docker Registry
+      env:
+        JFROG_USER: ${{ secrets.JFROG_USER }}
+        JFROG_API_KEY: ${{ secrets.JFROG_API_KEY }}
+        JFROG_DOCKER_URL: ${{ secrets.JFROG_DOCKER_URL }}
+      run: |
+        echo "${JFROG_API_KEY}" | docker login $JFROG_DOCKER_URL --username $JFROG_USER --password-stdin
+
+    - name: Build Docker Image from JFrog-hosted base
+      run: docker build -t petclinic:latest .
+
+    - name: Tag and Push Docker Image to JFrog
+      env:
+        JFROG_DOCKER_URL: ${{ secrets.JFROG_DOCKER_URL }}
+      run: |
+        docker tag petclinic:latest $JFROG_DOCKER_URL/petclinic:latest
+        docker push $JFROG_DOCKER_URL/petclinic:latest
+
+    - name: Xray Scan Export (via JFrog CLI)
+      env:
+        JFROG_CLI_JFROG_URL: ${{ secrets.JFROG_URL }}
+        JFROG_CLI_USER: ${{ secrets.JFROG_USER }}
+        JFROG_CLI_PASSWORD: ${{ secrets.JFROG_API_KEY }}
+      run: |
+        curl -fL https://getcli.jfrog.io | sh
+        ./jfrog rt c --url=$JFROG_CLI_JFROG_URL --user=$JFROG_CLI_USER --password=$JFROG_CLI_PASSWORD default
+        ./jfrog xr s "docker-virtual/petclinic:latest" --format json > xray-report.json
+
+    - name: Upload Xray Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: xray-report
+        path: xray-report.json
+
