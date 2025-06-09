@@ -27,6 +27,7 @@ jobs:
     - name: Install JFrog CLI v2
       run: |
         curl -fL https://install-cli.jfrog.io | sh
+        sudo mv jf /usr/local/bin/
 
     - name: Configure JFrog CLI
       env:
@@ -40,27 +41,39 @@ jobs:
           --password="${JFROG_API_KEY}" \
           --interactive=false
 
+    - name: Docker Login to JFrog
+      env:
+        JFROG_USER: ${{ secrets.JFROG_USER }}
+        JFROG_API_KEY: ${{ secrets.JFROG_API_KEY }}
+        JFROG_DOCKER_URL: ${{ secrets.JFROG_DOCKER_URL }}
+      run: |
+        echo "${JFROG_API_KEY}" | docker login $JFROG_DOCKER_URL --username $JFROG_USER --password-stdin
+
     - name: Build Docker Image from JFrog-hosted base
       run: docker build -t petclinic:latest .
 
-    - name: Tag Docker Image for JFrog Registry
+    - name: Tag and Push Docker Image to JFrog
       env:
         JFROG_DOCKER_URL: ${{ secrets.JFROG_DOCKER_URL }}
-      run: docker tag petclinic:latest $JFROG_DOCKER_URL/petclinic:latest
+      run: |
+        docker tag petclinic:latest $JFROG_DOCKER_URL/petclinic:latest
+        docker push $JFROG_DOCKER_URL/petclinic:latest
 
     - name: Push Docker Image to JFrog with Build Info
       env:
         JFROG_DOCKER_URL: ${{ secrets.JFROG_DOCKER_URL }}
       run: |
-        jf docker push $JFROG_DOCKER_URL/petclinic:latest \
+        jf docker push $JFROG_DOCKER_URL/petclinic:latest $JFROG_DOCKER_URL \
           --build-name=petclinic-ci \
           --build-number=${{ github.run_number }}
 
     - name: Publish Build Info to Artifactory
-      run: jf rt build-publish petclinic-ci ${{ github.run_number }}
+      run: |
+        jf rt build-publish petclinic-ci ${{ github.run_number }}
 
     - name: Xray Scan Build
-      run: jf xr build-scan petclinic-ci ${{ github.run_number }}
+      run: |
+        jf xr build-scan petclinic-ci ${{ github.run_number }}
 
     - name: Upload Xray Scan Report
       if: always()
