@@ -61,7 +61,7 @@ jobs:
     - name: Install JFrog CLI v2
       run: |
         curl -fL https://install-cli.jfrog.io | sh
-        ./jfrog --version
+        jf --version
 
     - name: Configure JFrog CLI
       env:
@@ -69,28 +69,26 @@ jobs:
         JFROG_USER: ${{ secrets.JFROG_USER }}
         JFROG_API_KEY: ${{ secrets.JFROG_API_KEY }}
       run: |
-        ./jfrog config add my-jfrog-server \
+        jf config add my-jfrog-server \
           --artifactory-url=$JFROG_URL \
           --user=$JFROG_USER \
           --password=$JFROG_API_KEY \
           --interactive=false
 
     - name: Push Docker Image with Build Info
-      env:
-        JFROG_DOCKER_URL: ${{ secrets.JFROG_DOCKER_URL }}
       run: |
-        ./jfrog rt docker-push petclinic:latest docker-virtual \
+        jf docker push petclinic:latest docker-virtual \
           --build-name=petclinic \
           --build-number=1
 
     - name: Publish Build Info to Artifactory
       run: |
-        ./jfrog rt build-collect-env petclinic 1
-        ./jfrog rt build-publish petclinic 1
+        jf rt build-collect-env petclinic 1
+        jf rt build-publish petclinic 1
 
     - name: Trigger Xray Scan on Build
       run: |
-        ./jfrog xr build-scan petclinic 1 --format=json > xray-report.json
+        jf xr scan --build=petclinic/1 --format=json > xray-report.json
 
     - name: Upload Xray Scan Report
       uses: actions/upload-artifact@v4
