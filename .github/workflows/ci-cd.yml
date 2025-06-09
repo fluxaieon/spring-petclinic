@@ -37,7 +37,7 @@ jobs:
         jf config add \
           --artifactory-url="${JFROG_URL}" \
           --user="${JFROG_USER}" \
-          --apikey="${JFROG_API_KEY}" \
+          --password="${JFROG_API_KEY}" \
           --interactive=false
 
     - name: Build Docker Image from JFrog-hosted base
